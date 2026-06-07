@@ -86,7 +86,7 @@
 ┌──────────────────────────────────────────────────────────────────────┐
 │                   DATA PERSISTENCE LAYER                             │
 │  ┌──────────────────────────┐  ┌─────────────────────────────────┐  │
-│  │ ChromaDB (local SQLite)  │  │ telecom_dataset.csv (500 rows)  │  │
+│  │ ChromaDB (local SQLite)  │  │ telecom_dataset_merged.csv (12,500 rows)│  │
 │  │ • cosine similarity      │  │ • BM25 index (in-memory)        │  │
 │  │ • metadata filtering     │  │ • Fallback + Predictive source  │  │
 │  │ • 1536-dim embeddings    │  │                                 │  │
@@ -184,7 +184,7 @@ USER QUERY
       ↓
   FallbackAnalyzer.analyze()
       ↓
-  [BM25 keyword + phrase scoring on telecom_dataset.csv]
+  [BM25 keyword + phrase scoring on telecom_dataset_merged.csv]
       ↓ 0 matches?
       ├── YES → confidence=0, priority=unknown, N/A fields, generic steps
       └── NO  →
@@ -362,8 +362,8 @@ localhost:5173     localhost:8000
       └──── HTTP/JSON ─────┘
                 |
          ./logs/telecom_fault.log
-         ./data/chroma_db/
-         ./data/telecom_dataset.csv
+         ./Data/chroma_db/
+         ./Data/telecom_dataset_merged.csv
 ```
 
 ### Backend Startup Modes

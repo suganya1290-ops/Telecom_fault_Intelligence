@@ -75,8 +75,10 @@ telecom-fault-intelligence/
 │   ├── vite.config.js
 │   ├── tailwind.config.js
 │   └── index.html
-├── data/
-│   ├── telecom_dataset.csv            # 500 realistic incidents
+├── Data/
+│   ├── telecom_dataset_merged.csv     # 12,500 incidents (merged + normalised)
+│   ├── telecom_dataset.csv            # Original 500-record base dataset
+│   ├── 5G_Network_Performance_Dataset_12000.csv  # 12,000-record supplementary dataset
 │   └── chroma_db/                     # Local ChromaDB persistent store
 ├── logs/
 │   └── telecom_fault.log              # Rotating application log
@@ -177,7 +179,7 @@ Frontend runs at `http://localhost:5173`
                             ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  Fallback Mode — FallbackAnalyzer  (offline, no API key needed)     │
-│  • BM25-style keyword + phrase scoring on telecom_dataset.csv       │
+│  • BM25-style keyword + phrase scoring on telecom_dataset_merged.csv │
 │  • Evidence-based RCA from declared causes in matched incidents     │
 │  • Data-driven confidence, revenue-loss, correlation strength       │
 │  • Generic defaults when 0 incidents match                          │
@@ -410,7 +412,7 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 OPENAI_MODEL=gpt-3.5-turbo
 
 # ChromaDB (local — no cloud account needed)
-CHROMA_DB_PATH=./data/chroma_db
+CHROMA_DB_PATH=./Data/chroma_db
 
 # Search
 BM25_K1=2.0           # BM25 saturation parameter
@@ -420,7 +422,7 @@ TOP_K_RETRIEVAL=5     # Incidents retrieved per query
 RERANK_TOP_K=3        # Top-k returned after embedding reranking
 
 # Data
-DATASET_PATH=./data/telecom_dataset.csv
+DATASET_PATH=./Data/telecom_dataset_merged.csv
 CHUNK_SIZE=500
 CHUNK_OVERLAP=100
 
@@ -455,7 +457,7 @@ Application logs are written to `logs/telecom_fault.log` (DEBUG level) and to th
 
 - **Fallback mode (no API key)** — ~50–200 ms end-to-end
 - **AI mode — full workflow** — ~3–6 seconds (5 LLM calls + embeddings)
-- **Incident retrieval** — ~200–500 ms (hybrid search on 500 incidents)
+- **Incident retrieval** — ~200–800 ms (hybrid search on 12,500 incidents)
 - **A2A messages per request** — ~15–25 messages in typical workflow
 
 ## Security Considerations

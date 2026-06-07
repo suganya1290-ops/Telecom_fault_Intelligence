@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-3.5-turbo"
 
     # ChromaDB (local — no cloud API key needed)
-    chroma_db_path: str = "./data/chroma_db"
+    chroma_db_path: str = "./Data/chroma_db"
 
     # FastAPI server
     api_host: str = "0.0.0.0"
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     api_reload: bool = True
 
     # Data
-    dataset_path: str = "./data/telecom_dataset.csv"
+    dataset_path: str = "./Data/telecom_dataset_merged.csv"
     chunk_size: int = 500
     chunk_overlap: int = 100
 
