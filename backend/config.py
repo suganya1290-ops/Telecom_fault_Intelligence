@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     api_reload: bool = True
 
     # Data
-    dataset_path: str = "./Data/telecom_dataset_merged.csv"
+    dataset_path: str = "./Data/telecom_dataset_enriched.csv"
     chunk_size: int = 500
     chunk_overlap: int = 100
 

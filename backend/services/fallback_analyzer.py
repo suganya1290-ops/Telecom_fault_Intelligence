@@ -103,6 +103,20 @@ _RESOLUTION_TEMPLATES = {
     "default":       "Review recent configuration changes; verify power supply; restart affected services; escalate if unresolved within SLA.",
 }
 
+# Maps enrichment root_cause_category strings → _ROOT_CAUSE_MAP keys
+_ENRICHED_CATEGORY_MAP: Dict[str, str] = {
+    "radio access network failure":                    "antenna",
+    "transmission / backhaul failure":                 "backhaul",
+    "5g core / gnb session failure":                   "gateway",
+    "core network capacity / congestion":              "congestion",
+    "dns / service discovery failure":                 "backhaul",
+    "timing & synchronisation failure":                "sync",
+    "authentication / subscriber management failure":  "software",
+    "volte / vonr quality degradation":                "software",
+    "configuration / change management error":         "configuration",
+    "backhaul / transmission congestion":              "backhaul",
+}
+
 _SEVERITY_WEIGHT = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}
 _RANK_DECAY      = [0.00, 0.08, 0.14, 0.20, 0.26]
 _REVENUE_PER_MIN = 1_200   # industry avg $/min telco outage cost
@@ -152,9 +166,25 @@ class FallbackAnalyzer:
         if "incident_description" in df.columns:
             df["_declared_cause"] = df["incident_description"].apply(_extract_declared_cause)
             df["_cause_key"]      = df["_declared_cause"].apply(_map_cause_to_key)
+        # Override with enrichment columns when available — more reliable than regex
+        if "root_cause_detail" in df.columns:
+            mask = df["root_cause_detail"].notna() & (df["root_cause_detail"].astype(str) != "")
+            df.loc[mask, "_declared_cause"] = df.loc[mask, "root_cause_detail"]
+        if "root_cause_category" in df.columns:
+            mask = df["root_cause_category"].notna() & (df["root_cause_category"].astype(str) != "")
+            # Normalize category strings to canonical _ROOT_CAUSE_MAP keys
+            df.loc[mask, "_cause_key"] = df.loc[mask, "root_cause_category"].str.lower().map(
+                _ENRICHED_CATEGORY_MAP
+            ).fillna(df.loc[mask, "_cause_key"])
+        # Pre-process symptom_keywords for fast scoring (2× weight in _search)
+        if "symptom_keywords" in df.columns:
+            df["_symptom_kws"] = df["symptom_keywords"].str.lower().fillna("")
+        else:
+            df["_symptom_kws"] = ""
         self._df = df
         self._loaded = True
-        logger.info(f"✓ Fallback analyser loaded {len(df)} incidents")
+        enriched = "root_cause_category" in df.columns
+        logger.info(f"✓ Fallback analyser loaded {len(df)} incidents (enriched={enriched})")
 
     # ── Public API ───────────────────────────────────────────────────────────
 
@@ -380,9 +410,14 @@ class FallbackAnalyzer:
 
         if keywords and "incident_description" in df.columns:
             df = df.copy()
-            df["_score"] = df["incident_description"].apply(
+            desc_scores = df["incident_description"].apply(
                 lambda t: sum(1.0 for kw in keywords if kw in str(t).lower())
             )
+            # symptom_keywords are curated signals — weight them 2× over raw description
+            kw_scores = df["_symptom_kws"].apply(
+                lambda t: sum(2.0 for kw in keywords if kw in t)
+            ) if "_symptom_kws" in df.columns else 0.0
+            df["_score"] = desc_scores + kw_scores
         else:
             df["_score"] = 0.0
 
@@ -473,6 +508,10 @@ class FallbackAnalyzer:
                     "service_impact":       str(row.get("service_impact", "N/A")),
                     "resolution_notes":     str(row.get("resolution_notes", ""))[:250],
                     "timestamp":            str(row.get("timestamp", "")),
+                    "root_cause_category":  str(row.get("root_cause_category", "")),
+                    "fault_component":      str(row.get("fault_component", "")),
+                    "affected_layer":       str(row.get("affected_layer", "")),
+                    "symptom_keywords":     str(row.get("symptom_keywords", "")),
                 },
                 "hybrid_score":    hybrid_score,
                 "relevance_score": hybrid_score,
@@ -599,6 +638,21 @@ class FallbackAnalyzer:
             contributing_factors.append(
                 f"Primary vendor: {top_vendor} equipment across majority of matched incidents"
             )
+        # Enrichment columns: fault component and affected layer
+        if not matches.empty and "fault_component" in matches.columns:
+            components = matches["fault_component"].dropna().unique()[:3].tolist()
+            components = [c for c in components if c and c != "nan"]
+            if components:
+                contributing_factors.append(
+                    f"Fault components identified: {', '.join(components)}"
+                )
+        if not matches.empty and "affected_layer" in matches.columns:
+            layers = matches["affected_layer"].dropna().unique()[:3].tolist()
+            layers = [l for l in layers if l and l != "nan"]
+            if layers:
+                contributing_factors.append(
+                    f"Affected network layers: {', '.join(layers)}"
+                )
         if evidence_source == "query_keywords":
             contributing_factors.append(
                 "⚠ Cause inferred from query keywords — no incident evidence available"
@@ -652,6 +706,15 @@ class FallbackAnalyzer:
             },
         ]
 
+        # Collect enrichment fields from matched incidents for the RCA output
+        fault_components: List[str] = []
+        affected_layers: List[str] = []
+        if not matches.empty:
+            if "fault_component" in matches.columns:
+                fault_components = [c for c in matches["fault_component"].dropna().unique()[:3].tolist() if str(c) != "nan"]
+            if "affected_layer" in matches.columns:
+                affected_layers  = [l for l in matches["affected_layer"].dropna().unique()[:3].tolist() if str(l) != "nan"]
+
         return {
             "primary_cause":        cause,
             "contributing_factors": contributing_factors,
@@ -662,6 +725,8 @@ class FallbackAnalyzer:
             "severity_assessment":  severity,
             "primary_vendor":       top_vendor,
             "affected_regions":     regions,
+            "fault_components":     fault_components,
+            "affected_layers":      affected_layers,
             "analysis_method":      "Evidence-based: declared causes extracted from retrieved incidents",
             "evidence_source":      evidence_source,
             "rca_evidence":         evidence_rows,
