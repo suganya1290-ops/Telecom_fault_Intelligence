@@ -177,7 +177,7 @@ def s01_title():
                  [{"t": lbl, "c": clr, "s": 14, "b": True}], align="c", anchor="c")
 
     s += box(e(0.5), e(3.5), e(9.0), e(0.4),
-             [{"t": "Dataset: 500 Telecom Incidents  |  Python 3.10  |  FastAPI  |  React 18",
+             [{"t": "Dataset: 12,500 Enriched Telecom Incidents  |  Python 3.10  |  FastAPI  |  React 18",
                "c": MUTED, "s": 13}], align="c")
     s += box(e(0.5), e(4.0), e(9.0), e(0.4),
              [{"t": "Prodapt  |  Suganya K  |  2026", "c": MUTED, "s": 13}], align="c")
@@ -213,9 +213,9 @@ def s02_agenda():
 
 def s03_dataset():
     reset_ids()
-    s = header("Dataset — 500 Real-World Telecom Incidents", GREEN)
+    s = header("Dataset — 12,500 Enriched Telecom Incidents", GREEN)
 
-    stats = [("500","Historical\nIncidents",GREEN),("10","Data\nColumns",ACCENT),
+    stats = [("12,500","Historical\nIncidents",GREEN),("16","Data\nColumns",ACCENT),
              ("5","Indian\nRegions",CYAN),("6","Technologies",YELLOW),("6","Vendors",ORANGE)]
     for i,(v,lbl,clr) in enumerate(stats):
         x = e(0.3 + i*1.82)
@@ -229,35 +229,45 @@ def s03_dataset():
              [{"t": "Dataset Columns", "c": ACCENT, "s": 13, "b": True}])
     cols_data = [
         ("alarm_id",             "Unique incident identifier"),
-        ("incident_description", "Natural-language fault description"),
+        ("incident_description", "Natural-language fault description (7,921 unique)"),
         ("network_region",       "5 Indian geographic zones"),
         ("technology_type",      "5G / 4G / LTE / GSM / Fiber / Microwave"),
         ("severity",             "critical / high / medium / low / info"),
         ("outage_duration",      "Minutes of service disruption"),
         ("device_vendor",        "Ericsson / Nokia / Huawei / Cisco / Juniper / Samsung"),
-        ("resolution_notes",     "How the incident was resolved"),
+        ("resolution_notes",     "How the incident was resolved (401 unique)"),
         ("timestamp",            "Date and time of incident"),
         ("service_impact",       "Service affected (voice / data / SMS …)"),
+        ("root_cause_category",  "10 enriched fault categories for RCA"),
+        ("root_cause_detail",    "Specific cause detail per incident"),
+        ("fault_component",      "Vendor-specific component name"),
+        ("affected_layer",       "Radio / Core / Transport / Mixed"),
+        ("symptom_keywords",     "Curated BM25 search terms (2× weight)"),
+        ("contributing_factors", "Severity + geography + failure chain"),
     ]
-    for i,(col,desc) in enumerate(cols_data):
-        y = e(2.72 + i*0.26)
-        s += rect(e(0.4), y, e(2.1), e(0.24), CARD, BORDER)
-        s += box(e(0.4), y, e(2.1), e(0.24),
-                 [{"t": col, "c": CYAN, "s": 10, "b": True}], anchor="c")
-        s += box(e(2.6), y, e(3.8), e(0.24),
-                 [{"t": desc, "c": TEXT, "s": 10}], anchor="c")
+    # 16 columns split into two visual columns (left 8, right 8)
+    left_cols  = cols_data[:8]
+    right_cols = cols_data[8:]
+    for i,(col,desc) in enumerate(left_cols):
+        y = e(2.3 + i*0.255)
+        s += rect(e(0.35), y, e(1.85), e(0.23), CARD, BORDER)
+        s += box(e(0.35), y, e(1.85), e(0.23),
+                 [{"t": col, "c": CYAN, "s": 8, "b": True}], anchor="c")
+        s += box(e(2.25), y, e(2.8), e(0.23),
+                 [{"t": desc, "c": TEXT, "s": 8}], anchor="c")
+    for i,(col,desc) in enumerate(right_cols):
+        y = e(2.3 + i*0.255)
+        s += rect(e(5.2), y, e(1.85), e(0.23), CARD, BORDER)
+        s += box(e(5.2), y, e(1.85), e(0.23),
+                 [{"t": col, "c": GREEN, "s": 8, "b": True}], anchor="c")
+        s += box(e(7.1), y, e(2.8), e(0.23),
+                 [{"t": desc, "c": TEXT, "s": 8}], anchor="c")
+    # Enrichment badge
+    s += rect(e(5.15), e(1.75), e(4.7), e(0.45), "#1a2e1a", GREEN)
+    s += box(e(5.15), e(1.75), e(4.7), e(0.45),
+             [{"t": "★ 6 NEW Enrichment Columns  |  RCA Confidence: 88–92%", "c": GREEN, "s": 11, "b": True}],
+             align="c", anchor="c")
 
-    s += box(e(6.9), e(2.3), e(2.6), e(0.35),
-             [{"t": "Sample Record", "c": YELLOW, "s": 13, "b": True}])
-    sample = [("Alarm ID","ALM_000042"),("Region","North India"),
-              ("Technology","5G"),("Severity","Critical"),("Vendor","Ericsson"),
-              ("Duration","87 minutes"),("Impact","Data service loss")]
-    for i,(k,v) in enumerate(sample):
-        y = e(2.72 + i*0.34)
-        s += box(e(6.9), y, e(1.1), e(0.3),
-                 [{"t": k+":", "c": MUTED, "s": 11, "b": True}])
-        s += box(e(8.05), y, e(1.6), e(0.3),
-                 [{"t": v, "c": TEXT, "s": 11}])
     return slide(s)
 
 
