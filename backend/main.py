@@ -78,43 +78,55 @@ async def lifespan(app: FastAPI):
         logger.error(f"✗ Predictive engine failed: {exc}")
 
     # --- OpenAI-dependent services -------------------------------------------
-    try:
-        openai_client = OpenAI(api_key=_settings.openai_api_key)
-
-        rag_pipeline = RAGPipeline(
-            openai_client=openai_client,
-            db_path=_settings.chroma_db_path,
-            dataset_path=_settings.dataset_path,
-            embedding_model=_settings.openai_embedding_model,
-            chunk_size=_settings.chunk_size,
-            chunk_overlap=_settings.chunk_overlap,
+    # Guard against missing or obviously-invalid keys before hitting the API.
+    _api_key = (_settings.openai_api_key or "").strip()
+    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    if not _key_valid:
+        logger.warning(
+            "⚠ OPENAI_API_KEY not set or invalid (must start with 'sk-'). "
+            "Running in FALLBACK MODE — BM25/pattern-matching active, all endpoints operational."
         )
+    else:
+        try:
+            openai_client = OpenAI(api_key=_api_key)
 
-        root_cause_engine     = RootCauseAnalysisEngine(openai_client, _settings.openai_model)
-        service_impact_engine = ServiceImpactEngine(openai_client, _settings.openai_model)
-        resolution_engine     = ResolutionRecommendationEngine(openai_client, _settings.openai_model)
+            rag_pipeline = RAGPipeline(
+                openai_client=openai_client,
+                db_path=_settings.chroma_db_path,
+                dataset_path=_settings.dataset_path,
+                embedding_model=_settings.openai_embedding_model,
+                chunk_size=_settings.chunk_size,
+                chunk_overlap=_settings.chunk_overlap,
+            )
 
-        orchestrator = AgentOrchestrator(
-            rag_pipeline=rag_pipeline,
-            root_cause_engine=root_cause_engine,
-            service_impact_engine=service_impact_engine,
-            resolution_engine=resolution_engine,
-        )
+            root_cause_engine     = RootCauseAnalysisEngine(openai_client, _settings.openai_model)
+            service_impact_engine = ServiceImpactEngine(openai_client, _settings.openai_model)
+            resolution_engine     = ResolutionRecommendationEngine(openai_client, _settings.openai_model)
 
-        logger.info("Initializing RAG pipeline with data…")
-        rag_pipeline.initialize()
+            orchestrator = AgentOrchestrator(
+                rag_pipeline=rag_pipeline,
+                root_cause_engine=root_cause_engine,
+                service_impact_engine=service_impact_engine,
+                resolution_engine=resolution_engine,
+            )
 
-        set_orchestrator(orchestrator)
-        set_rag_pipeline(rag_pipeline)
+            logger.info("Initializing RAG pipeline with data…")
+            rag_pipeline.initialize()
 
-        logger.info("✓ RAG pipeline and orchestrator ready")
-    except Exception as exc:
-        logger.error(
-            f"✗ RAG/Orchestrator init failed: {exc}  "
-            f"— Set a valid OPENAI_API_KEY in .env to enable query endpoints."
-        )
+            set_orchestrator(orchestrator)
+            set_rag_pipeline(rag_pipeline)
 
-    logger.info("✓ Server startup complete (some services may be unavailable)")
+            logger.info("✓ RAG pipeline and orchestrator ready (AI mode)")
+        except Exception as exc:
+            logger.error(
+                f"✗ RAG/Orchestrator init failed: {exc} "
+                "— falling back to rule-based analysis. "
+                "Check OPENAI_API_KEY and network connectivity."
+            )
+
+    from backend.api.routes import orchestrator as _orch, fallback_analyzer as _fa
+    _mode = "AI" if _orch else ("FALLBACK" if _fa else "UNAVAILABLE")
+    logger.info(f"✓ Server startup complete — analysis mode: {_mode}")
     yield
 
     logger.info("Shutting down Telecom Fault Intelligence System…")
@@ -207,16 +219,29 @@ async def root():
 
 @app.get("/health", tags=["system"])
 async def root_health():
-    """Top-level health check (mirrors /api/v1/health without the prefix)."""
-    from backend.api.routes import rag_pipeline, orchestrator, predictive_engine
+    """Top-level health check — always returns 200; check 'mode' for active analysis path."""
+    from backend.api.routes import rag_pipeline, orchestrator, predictive_engine, fallback_analyzer
+    _api_key = (settings.openai_api_key or "").strip()
+    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
+    _records = (
+        len(fallback_analyzer._df)
+        if fallback_analyzer and getattr(fallback_analyzer, "_df", None) is not None
+        else 0
+    )
     return {
-        "status": "healthy",
-        "timestamp": time.time(),
-        "backend_url": f"http://{settings.api_host}:{settings.api_port}",
+        "status":            "healthy",
+        "timestamp":         time.time(),
+        "backend_url":       f"http://{settings.api_host}:{settings.api_port}",
+        "mode":              _mode,
+        "fallback_mode":     orchestrator is None,
+        "api_key_configured": _key_valid,
+        "dataset_records":   _records,
         "services": {
             "orchestrator":      orchestrator      is not None,
             "rag_pipeline":      rag_pipeline      is not None and getattr(rag_pipeline, "is_initialized", False),
             "predictive_engine": predictive_engine is not None and getattr(predictive_engine, "_loaded", False),
+            "fallback_analyzer": fallback_analyzer is not None and getattr(fallback_analyzer, "_loaded", False),
         },
     }
 

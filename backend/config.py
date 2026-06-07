@@ -7,8 +7,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables / .env file."""
 
-    # OpenAI
-    openai_api_key: str
+    # OpenAI — optional; omitting it (or leaving it blank) keeps the app in
+    # fallback mode so all endpoints remain operational via BM25/pattern matching.
+    openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
     openai_model: str = "gpt-3.5-turbo"
 

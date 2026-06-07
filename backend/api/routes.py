@@ -475,16 +475,29 @@ async def get_dashboard_metrics() -> dict:
     ),
 )
 async def health_check() -> dict:
+    from backend.config import get_settings as _gs
+    _api_key = (_gs().openai_api_key or "").strip()
+    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
+    _records = (
+        len(fallback_analyzer._df)
+        if fallback_analyzer and getattr(fallback_analyzer, "_df", None) is not None
+        else 0
+    )
     return {
-        "status": "healthy",
-        "timestamp": time.time(),
+        "status":             "healthy",
+        "timestamp":          time.time(),
+        "mode":               _mode,
+        "fallback_mode":      orchestrator is None,
+        "api_key_configured": _key_valid,
+        "dataset_records":    _records,
         "services": {
             "orchestrator":      orchestrator      is not None,
             "rag_pipeline":      rag_pipeline      is not None and getattr(rag_pipeline, "is_initialized", False),
             "predictive_engine": predictive_engine is not None and getattr(predictive_engine, "_loaded", False),
             "fallback_analyzer": fallback_analyzer is not None and getattr(fallback_analyzer, "_loaded", False),
         },
-        "analysis_mode": "ai" if orchestrator else "fallback" if fallback_analyzer else "unavailable",
+        "analysis_mode": _mode,
     }
 
 
