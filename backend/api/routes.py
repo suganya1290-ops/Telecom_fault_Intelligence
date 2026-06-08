@@ -443,7 +443,7 @@ async def get_dashboard_metrics() -> dict:
             "predictive_summary":  predictive_summary,
             "token_optimization": {
                 "active":             True,
-                "engine":             "tiktoken (gpt-3.5-turbo encoding)",
+                "engine":             "tiktoken (gpt-4o-mini encoding)",
                 "max_context_tokens": 2500,
                 "rca_field_caps":     {"description": "200 tokens", "resolution": "100 tokens"},
                 "resolution_field_caps": {"resolution_notes": "150 tokens"},

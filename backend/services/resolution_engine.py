@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ResolutionRecommendationEngine:
     """Generates troubleshooting recommendations for telecom incidents."""
     
-    def __init__(self, client: OpenAI, model: str = "gpt-3.5-turbo"):
+    def __init__(self, client: OpenAI, model: str = "gpt-4o-mini"):
         """Initialize resolution engine.
         
         Args:

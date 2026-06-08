@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ServiceImpactEngine:
     """Analyzes service impact and business effects of incidents."""
     
-    def __init__(self, client: OpenAI, model: str = "gpt-3.5-turbo"):
+    def __init__(self, client: OpenAI, model: str = "gpt-4o-mini"):
         """Initialize service impact engine.
         
         Args:

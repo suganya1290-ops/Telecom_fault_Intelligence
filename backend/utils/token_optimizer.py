@@ -22,7 +22,7 @@ def _get_encoding(model: str):
 class TokenOptimizer:
     """Counts and manages tokens to stay within LLM context limits."""
 
-    def __init__(self, model: str = "gpt-3.5-turbo", max_context_tokens: int = 3000):
+    def __init__(self, model: str = "gpt-4o-mini", max_context_tokens: int = 3000):
         self.model = model
         self.max_context_tokens = max_context_tokens
         self._enc = _get_encoding(model)

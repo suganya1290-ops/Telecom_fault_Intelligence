@@ -143,7 +143,7 @@ class EvaluationFramework:
     as `skipped_reason: "no_valid_openai_key"`.
     """
 
-    def __init__(self, model_name: str = "gpt-3.5-turbo"):
+    def __init__(self, model_name: str = "gpt-4o-mini"):
         self.model_name    = model_name
         self.custom_metric = TelecomTroubleshootingMetric()
         self.metrics_history: List[Dict[str, Any]] = []
@@ -307,7 +307,7 @@ class EvaluationFramework:
 _framework: Optional[EvaluationFramework] = None
 
 
-def get_evaluation_framework(model_name: str = "gpt-3.5-turbo") -> EvaluationFramework:
+def get_evaluation_framework(model_name: str = "gpt-4o-mini") -> EvaluationFramework:
     global _framework
     if _framework is None:
         _framework = EvaluationFramework(model_name)

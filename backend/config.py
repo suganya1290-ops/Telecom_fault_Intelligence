@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # fallback mode so all endpoints remain operational via BM25/pattern matching.
     openai_api_key: str = ""
     openai_embedding_model: str = "text-embedding-3-small"
-    openai_model: str = "gpt-3.5-turbo"
+    openai_model: str = "gpt-4o-mini"
 
     # ChromaDB (local — no cloud API key needed)
     chroma_db_path: str = "./Data/chroma_db"
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Evaluation
     evaluation_enabled: bool = True
-    deepeval_model: str = "gpt-3.5-turbo"
+    deepeval_model: str = "gpt-4o-mini"
     deepeval_threshold: float = 0.7
 
     # Logging
