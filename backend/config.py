@@ -7,11 +7,12 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application configuration loaded from environment variables / .env file."""
 
-    # OpenAI — optional; omitting it (or leaving it blank) keeps the app in
-    # fallback mode so all endpoints remain operational via BM25/pattern matching.
-    openai_api_key: str = ""
-    openai_embedding_model: str = "text-embedding-3-small"
-    openai_model: str = "gpt-4o-mini"
+    # LLM provider — set openai_base_url to Ollama for local, no-key inference.
+    # Leave blank to use OpenAI cloud (requires a valid sk-... API key).
+    openai_api_key: str = "ollama"
+    openai_base_url: str = "http://localhost:11434/v1"
+    openai_embedding_model: str = "nomic-embed-text"
+    openai_model: str = "llama3.2"
 
     # ChromaDB (local — no cloud API key needed)
     chroma_db_path: str = "./Data/chroma_db"
@@ -36,7 +37,7 @@ class Settings(BaseSettings):
 
     # Evaluation
     evaluation_enabled: bool = True
-    deepeval_model: str = "gpt-4o-mini"
+    deepeval_model: str = "llama3.2"
     deepeval_threshold: float = 0.7
 
     # Logging

@@ -476,8 +476,11 @@ async def get_dashboard_metrics() -> dict:
 )
 async def health_check() -> dict:
     from backend.config import get_settings as _gs
-    _api_key = (_gs().openai_api_key or "").strip()
-    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    _s = _gs()
+    _api_key  = (_s.openai_api_key or "").strip()
+    _base_url = (_s.openai_base_url or "").strip()
+    _is_ollama = "11434" in _base_url or "localhost" in _base_url
+    _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
     _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
     _records = (
         len(fallback_analyzer._df)

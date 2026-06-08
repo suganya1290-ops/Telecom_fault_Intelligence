@@ -77,18 +77,27 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error(f"✗ Predictive engine failed: {exc}")
 
-    # --- OpenAI-dependent services -------------------------------------------
-    # Guard against missing or obviously-invalid keys before hitting the API.
-    _api_key = (_settings.openai_api_key or "").strip()
-    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    # --- OpenAI-compatible LLM services (OpenAI cloud or local Ollama) --------
+    _api_key  = (_settings.openai_api_key or "").strip()
+    _base_url = (_settings.openai_base_url or "").strip()
+    _is_ollama = "11434" in _base_url or "localhost" in _base_url
+    # Ollama accepts any non-empty key; OpenAI cloud requires sk- prefix
+    _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
     if not _key_valid:
         logger.warning(
-            "⚠ OPENAI_API_KEY not set or invalid (must start with 'sk-'). "
+            "⚠ No valid LLM key configured. "
+            "For Ollama: set OPENAI_API_KEY=ollama and OPENAI_BASE_URL=http://localhost:11434/v1. "
+            "For OpenAI: set OPENAI_API_KEY=sk-... "
             "Running in FALLBACK MODE — BM25/pattern-matching active, all endpoints operational."
         )
     else:
+        _provider = "Ollama" if _is_ollama else "OpenAI"
+        logger.info(f"LLM provider: {_provider} | model: {_settings.openai_model} | base_url: {_base_url or 'default'}")
         try:
-            openai_client = OpenAI(api_key=_api_key)
+            client_kwargs = {"api_key": _api_key}
+            if _base_url:
+                client_kwargs["base_url"] = _base_url
+            openai_client = OpenAI(**client_kwargs)
 
             rag_pipeline = RAGPipeline(
                 openai_client=openai_client,
@@ -221,8 +230,10 @@ async def root():
 async def root_health():
     """Top-level health check — always returns 200; check 'mode' for active analysis path."""
     from backend.api.routes import rag_pipeline, orchestrator, predictive_engine, fallback_analyzer
-    _api_key = (settings.openai_api_key or "").strip()
-    _key_valid = _api_key.startswith("sk-") and len(_api_key) > 20
+    _api_key  = (settings.openai_api_key or "").strip()
+    _base_url = (settings.openai_base_url or "").strip()
+    _is_ollama = "11434" in _base_url or "localhost" in _base_url
+    _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
     _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
     _records = (
         len(fallback_analyzer._df)
