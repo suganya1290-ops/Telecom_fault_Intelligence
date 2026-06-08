@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     openai_api_key: str = "ollama"
     openai_base_url: str = "http://localhost:11434/v1"
     openai_embedding_model: str = "nomic-embed-text"
-    openai_model: str = "llama3.2"
+    openai_model: str = "llama3.2:1b"
 
     # ChromaDB (local — no cloud API key needed)
     chroma_db_path: str = "./Data/chroma_db"

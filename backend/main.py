@@ -11,13 +11,18 @@ from fastapi.responses import JSONResponse
 from openai import OpenAI
 
 from backend.config import get_settings
-from backend.api.routes import router, set_orchestrator, set_rag_pipeline, set_predictive_engine, set_fallback_analyzer
+from backend.api.routes import (
+    router,
+    set_orchestrator, set_rag_pipeline, set_predictive_engine,
+    set_fallback_analyzer, set_ollama_enhancer,
+)
 from backend.services.rag_pipeline import RAGPipeline
 from backend.services.root_cause_engine import RootCauseAnalysisEngine
 from backend.services.service_impact_engine import ServiceImpactEngine
 from backend.services.resolution_engine import ResolutionRecommendationEngine
 from backend.services.predictive_engine import PredictiveOutageEngine
 from backend.services.fallback_analyzer import FallbackAnalyzer
+from backend.services.ollama_enhancer import OllamaRCAEnhancer
 from backend.agents.orchestrator import AgentOrchestrator
 
 # Load .env before anything else reads the environment
@@ -77,61 +82,29 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.error(f"✗ Predictive engine failed: {exc}")
 
-    # --- OpenAI-compatible LLM services (OpenAI cloud or local Ollama) --------
+    # --- Ollama LLM enhancer (no embeddings, no ChromaDB — starts instantly) --
     _api_key  = (_settings.openai_api_key or "").strip()
     _base_url = (_settings.openai_base_url or "").strip()
     _is_ollama = "11434" in _base_url or "localhost" in _base_url
-    # Ollama accepts any non-empty key; OpenAI cloud requires sk- prefix
     _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
-    if not _key_valid:
-        logger.warning(
-            "⚠ No valid LLM key configured. "
-            "For Ollama: set OPENAI_API_KEY=ollama and OPENAI_BASE_URL=http://localhost:11434/v1. "
-            "For OpenAI: set OPENAI_API_KEY=sk-... "
-            "Running in FALLBACK MODE — BM25/pattern-matching active, all endpoints operational."
-        )
-    else:
-        _provider = "Ollama" if _is_ollama else "OpenAI"
-        logger.info(f"LLM provider: {_provider} | model: {_settings.openai_model} | base_url: {_base_url or 'default'}")
+
+    if _key_valid:
         try:
             client_kwargs = {"api_key": _api_key}
             if _base_url:
                 client_kwargs["base_url"] = _base_url
             openai_client = OpenAI(**client_kwargs)
-
-            rag_pipeline = RAGPipeline(
-                openai_client=openai_client,
-                db_path=_settings.chroma_db_path,
-                dataset_path=_settings.dataset_path,
-                embedding_model=_settings.openai_embedding_model,
-                chunk_size=_settings.chunk_size,
-                chunk_overlap=_settings.chunk_overlap,
-            )
-
-            root_cause_engine     = RootCauseAnalysisEngine(openai_client, _settings.openai_model)
-            service_impact_engine = ServiceImpactEngine(openai_client, _settings.openai_model)
-            resolution_engine     = ResolutionRecommendationEngine(openai_client, _settings.openai_model)
-
-            orchestrator = AgentOrchestrator(
-                rag_pipeline=rag_pipeline,
-                root_cause_engine=root_cause_engine,
-                service_impact_engine=service_impact_engine,
-                resolution_engine=resolution_engine,
-            )
-
-            logger.info("Initializing RAG pipeline with data…")
-            rag_pipeline.initialize()
-
-            set_orchestrator(orchestrator)
-            set_rag_pipeline(rag_pipeline)
-
-            logger.info("✓ RAG pipeline and orchestrator ready (AI mode)")
+            enhancer = OllamaRCAEnhancer(openai_client, _settings.openai_model)
+            enhancer.check_available()   # quick connectivity test
+            set_ollama_enhancer(enhancer)
         except Exception as exc:
-            logger.error(
-                f"✗ RAG/Orchestrator init failed: {exc} "
-                "— falling back to rule-based analysis. "
-                "Check OPENAI_API_KEY and network connectivity."
-            )
+            logger.error(f"✗ Ollama/LLM enhancer init failed: {exc}")
+    else:
+        logger.warning(
+            "⚠ No valid LLM key. Set OPENAI_API_KEY=ollama + "
+            "OPENAI_BASE_URL=http://localhost:11434/v1 for Llama 3.2 reasoning. "
+            "Running BM25-only fallback."
+        )
 
     from backend.api.routes import orchestrator as _orch, fallback_analyzer as _fa
     _mode = "AI" if _orch else ("FALLBACK" if _fa else "UNAVAILABLE")
@@ -229,30 +202,37 @@ async def root():
 @app.get("/health", tags=["system"])
 async def root_health():
     """Top-level health check — always returns 200; check 'mode' for active analysis path."""
-    from backend.api.routes import rag_pipeline, orchestrator, predictive_engine, fallback_analyzer
+    from backend.api.routes import rag_pipeline, orchestrator, predictive_engine, fallback_analyzer, ollama_enhancer
     _api_key  = (settings.openai_api_key or "").strip()
     _base_url = (settings.openai_base_url or "").strip()
     _is_ollama = "11434" in _base_url or "localhost" in _base_url
     _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
-    _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
+    _ollama_up = ollama_enhancer is not None and getattr(ollama_enhancer, "_available", False)
+    _mode = (
+        "ai"            if orchestrator else
+        "ollama+bm25"   if (_ollama_up and fallback_analyzer) else
+        "bm25_fallback" if fallback_analyzer else
+        "unavailable"
+    )
     _records = (
         len(fallback_analyzer._df)
         if fallback_analyzer and getattr(fallback_analyzer, "_df", None) is not None
         else 0
     )
     return {
-        "status":            "healthy",
-        "timestamp":         time.time(),
-        "backend_url":       f"http://{settings.api_host}:{settings.api_port}",
-        "mode":              _mode,
-        "fallback_mode":     orchestrator is None,
+        "status":             "healthy",
+        "timestamp":          time.time(),
+        "backend_url":        f"http://{settings.api_host}:{settings.api_port}",
+        "mode":               _mode,
+        "fallback_mode":      orchestrator is None,
         "api_key_configured": _key_valid,
-        "dataset_records":   _records,
+        "dataset_records":    _records,
         "services": {
             "orchestrator":      orchestrator      is not None,
             "rag_pipeline":      rag_pipeline      is not None and getattr(rag_pipeline, "is_initialized", False),
             "predictive_engine": predictive_engine is not None and getattr(predictive_engine, "_loaded", False),
             "fallback_analyzer": fallback_analyzer is not None and getattr(fallback_analyzer, "_loaded", False),
+            "ollama_enhancer":   _ollama_up,
         },
     }
 

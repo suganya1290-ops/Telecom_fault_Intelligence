@@ -32,12 +32,14 @@ orchestrator      = None
 rag_pipeline      = None
 predictive_engine = None
 fallback_analyzer = None
+ollama_enhancer   = None
 
 
 def set_orchestrator(orch):      global orchestrator;      orchestrator      = orch
 def set_rag_pipeline(rag):       global rag_pipeline;      rag_pipeline      = rag
 def set_predictive_engine(eng):  global predictive_engine; predictive_engine = eng
 def set_fallback_analyzer(fa):   global fallback_analyzer; fallback_analyzer = fa
+def set_ollama_enhancer(enh):    global ollama_enhancer;   ollama_enhancer   = enh
 
 
 # ── Helper: read real dataset metrics ────────────────────────────────────────
@@ -98,7 +100,7 @@ async def query_fault_intelligence(request: QueryRequest) -> dict:
         raise HTTPException(status_code=400, detail=err_msg)
     safe_query = sanitize_query(request.query)
 
-    # AI path
+    # ── Tier 1: Full AI orchestrator (OpenAI cloud with RAG pipeline) ──────────
     if orchestrator:
         try:
             start  = time.time()
@@ -110,12 +112,12 @@ async def query_fault_intelligence(request: QueryRequest) -> dict:
                 vendor_filter=request.vendor_filter,
             )
             result["processing_time_ms"] = (time.time() - start) * 1000
-            logger.info(f"Query processed (AI) in {result['processing_time_ms']:.1f}ms")
+            logger.info(f"Query processed (AI orchestrator) in {result['processing_time_ms']:.1f}ms")
             return result
         except Exception as exc:
-            logger.error(f"✗ AI workflow error: {exc} — falling back to rule-based analysis")
+            logger.error(f"✗ AI orchestrator error: {exc} — trying Ollama+BM25")
 
-    # Fallback path
+    # ── Tier 2: BM25 retrieval + Ollama LLM reasoning (no embeddings needed) ──
     if fallback_analyzer:
         try:
             start  = time.time()
@@ -126,11 +128,16 @@ async def query_fault_intelligence(request: QueryRequest) -> dict:
                 technology_filter=request.technology_filter,
                 vendor_filter=request.vendor_filter,
             )
+            # Enhance with Ollama if available
+            if ollama_enhancer and ollama_enhancer.is_available():
+                result = ollama_enhancer.enhance(safe_query, result)
+                logger.info(f"Query processed (BM25 + Ollama) in {(time.time()-start)*1000:.1f}ms")
+            else:
+                logger.info(f"Query processed (BM25 fallback) in {(time.time()-start)*1000:.1f}ms")
             result["processing_time_ms"] = (time.time() - start) * 1000
-            logger.info(f"Query processed (fallback) in {result['processing_time_ms']:.1f}ms")
             return result
         except Exception as exc:
-            logger.error(f"✗ Fallback analysis error: {exc}")
+            logger.error(f"✗ Analysis error: {exc}")
             raise HTTPException(status_code=500, detail="Analysis failed — see server logs")
 
     raise HTTPException(
@@ -481,7 +488,13 @@ async def health_check() -> dict:
     _base_url = (_s.openai_base_url or "").strip()
     _is_ollama = "11434" in _base_url or "localhost" in _base_url
     _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
-    _mode = "ai" if orchestrator else ("fallback" if fallback_analyzer else "unavailable")
+    _ollama_up = ollama_enhancer is not None and getattr(ollama_enhancer, "_available", False)
+    _mode = (
+        "ai"            if orchestrator else
+        "ollama+bm25"   if (_ollama_up and fallback_analyzer) else
+        "bm25_fallback" if fallback_analyzer else
+        "unavailable"
+    )
     _records = (
         len(fallback_analyzer._df)
         if fallback_analyzer and getattr(fallback_analyzer, "_df", None) is not None
@@ -499,6 +512,7 @@ async def health_check() -> dict:
             "rag_pipeline":      rag_pipeline      is not None and getattr(rag_pipeline, "is_initialized", False),
             "predictive_engine": predictive_engine is not None and getattr(predictive_engine, "_loaded", False),
             "fallback_analyzer": fallback_analyzer is not None and getattr(fallback_analyzer, "_loaded", False),
+            "ollama_enhancer":   ollama_enhancer   is not None and getattr(ollama_enhancer, "_available", False),
         },
         "analysis_mode": _mode,
     }
