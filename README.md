@@ -28,18 +28,6 @@ The system operates in three modes and requires no external services beyond an o
 - **ChromaDB** — Local persistent vector store (AI mode only)
 - **DeepEval** — RAG quality evaluation (optional)
 
-## Screenshots
-
-| View | Screenshot |
-|------|-----------|
-| Fault Analysis — home | ![Fault Analysis](screenshots/01_fault_analysis_home.png) |
-| Fault Analysis — BM25 results | ![Results](screenshots/02_fault_analysis_results.png) |
-| After "Enhance with AI" | ![Enhanced](screenshots/07_enhance_ai_result.png) |
-| Impact & Fix tab | ![Impact](screenshots/08_impact_fix.png) |
-| Evidence tab | ![Evidence](screenshots/09_evidence.png) |
-| Timeline tab | ![Timeline](screenshots/10_timeline.png) |
-| Dashboard | ![Dashboard](screenshots/04_dashboard.png) |
-| Predictive Intelligence | ![Predictive](screenshots/06_predictive_intelligence.png) |
 
 ## Project Structure
 
