@@ -13,17 +13,12 @@ from openai import OpenAI
 from backend.config import get_settings
 from backend.api.routes import (
     router,
-    set_orchestrator, set_rag_pipeline, set_predictive_engine,
+    set_predictive_engine,
     set_fallback_analyzer, set_ollama_enhancer,
 )
-from backend.services.rag_pipeline import RAGPipeline
-from backend.services.root_cause_engine import RootCauseAnalysisEngine
-from backend.services.service_impact_engine import ServiceImpactEngine
-from backend.services.resolution_engine import ResolutionRecommendationEngine
 from backend.services.predictive_engine import PredictiveOutageEngine
 from backend.services.fallback_analyzer import FallbackAnalyzer
 from backend.services.ollama_enhancer import OllamaRCAEnhancer
-from backend.agents.orchestrator import AgentOrchestrator
 
 # Load .env before anything else reads the environment
 load_dotenv()
@@ -85,8 +80,15 @@ async def lifespan(app: FastAPI):
     # --- Ollama LLM enhancer (no embeddings, no ChromaDB — starts instantly) --
     _api_key  = (_settings.openai_api_key or "").strip()
     _base_url = (_settings.openai_base_url or "").strip()
-    _is_ollama = "11434" in _base_url or "localhost" in _base_url
-    _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
+    _is_ollama  = "11434" in _base_url or "localhost" in _base_url
+    _is_groq    = "groq.com" in _base_url
+    _is_proxy   = bool(_base_url) and not _is_ollama and not _is_groq and "openai.com" not in _base_url
+    _key_valid = bool(_api_key) and (
+        _is_ollama                                          # Ollama: any non-empty key
+        or _is_groq                                        # Groq: gsk_... key
+        or _is_proxy                                       # Custom proxy: any non-empty key
+        or (_api_key.startswith("sk-") and len(_api_key) > 20)  # OpenAI: sk-...
+    )
 
     if _key_valid:
         try:
@@ -94,17 +96,15 @@ async def lifespan(app: FastAPI):
             if _base_url:
                 client_kwargs["base_url"] = _base_url
             openai_client = OpenAI(**client_kwargs)
-            enhancer = OllamaRCAEnhancer(openai_client, _settings.openai_model)
-            enhancer.check_available()   # quick connectivity test
+            provider_name = "groq" if _is_groq else ("ollama" if _is_ollama else "openai")
+            enhancer = OllamaRCAEnhancer(openai_client, _settings.openai_model, provider=provider_name)
+            enhancer.check_available()
             set_ollama_enhancer(enhancer)
+            logger.info(f"✓ LLM enhancer ready — provider: {provider_name}, model: {_settings.openai_model}")
         except Exception as exc:
-            logger.error(f"✗ Ollama/LLM enhancer init failed: {exc}")
+            logger.error(f"✗ LLM enhancer init failed: {exc}")
     else:
-        logger.warning(
-            "⚠ No valid LLM key. Set OPENAI_API_KEY=ollama + "
-            "OPENAI_BASE_URL=http://localhost:11434/v1 for Llama 3.2 reasoning. "
-            "Running BM25-only fallback."
-        )
+        logger.warning("⚠ No valid LLM key — running BM25-only fallback.")
 
     from backend.api.routes import orchestrator as _orch, fallback_analyzer as _fa
     _mode = "AI" if _orch else ("FALLBACK" if _fa else "UNAVAILABLE")
@@ -206,7 +206,8 @@ async def root_health():
     _api_key  = (settings.openai_api_key or "").strip()
     _base_url = (settings.openai_base_url or "").strip()
     _is_ollama = "11434" in _base_url or "localhost" in _base_url
-    _key_valid = bool(_api_key) and (_is_ollama or (_api_key.startswith("sk-") and len(_api_key) > 20))
+    _is_proxy  = bool(_base_url) and not _is_ollama and "openai.com" not in _base_url
+    _key_valid = bool(_api_key) and (_is_ollama or _is_proxy or (_api_key.startswith("sk-") and len(_api_key) > 20))
     _ollama_up = ollama_enhancer is not None and getattr(ollama_enhancer, "_available", False)
     _mode = (
         "ai"            if orchestrator else

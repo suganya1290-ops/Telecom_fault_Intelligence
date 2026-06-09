@@ -1,17 +1,13 @@
+import asyncio
+import functools
 import logging
 import time
-from typing import Dict, List, Literal, Optional, Any
+from typing import Dict, Literal, Optional, Any
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.models.schemas import (
-    QueryRequest,
-    QueryResponse,
-    DashboardMetrics,
-    PredictiveOutageResponse,
-    RiskAlert,
-)
+from backend.models.schemas import QueryRequest
 from backend.utils.guardrails import validate_query, sanitize_query
 
 logger = logging.getLogger(__name__)
@@ -128,10 +124,21 @@ async def query_fault_intelligence(request: QueryRequest) -> dict:
                 technology_filter=request.technology_filter,
                 vendor_filter=request.vendor_filter,
             )
-            # Enhance with Ollama if available
+            # Enhance with LLM — timeout depends on provider:
+            #   Groq / OpenAI: fast API (~0.5-2s) → 10s cap
+            #   Ollama CPU:    slow (~20s)         → 0.5s cap (deferred, use /enhance button)
             if ollama_enhancer and ollama_enhancer.is_available():
-                result = ollama_enhancer.enhance(safe_query, result)
-                logger.info(f"Query processed (BM25 + Ollama) in {(time.time()-start)*1000:.1f}ms")
+                provider  = getattr(ollama_enhancer, "provider", "ollama")
+                llm_timeout = 10.0 if provider in ("groq", "openai") else 0.5
+                loop = asyncio.get_event_loop()
+                try:
+                    result = await asyncio.wait_for(
+                        loop.run_in_executor(None, ollama_enhancer.enhance, safe_query, result),
+                        timeout=llm_timeout,
+                    )
+                    logger.info(f"Query processed (BM25 + {provider}) in {(time.time()-start)*1000:.1f}ms")
+                except asyncio.TimeoutError:
+                    logger.info(f"{provider} deferred (timeout {llm_timeout}s) — returning BM25 result")
             else:
                 logger.info(f"Query processed (BM25 fallback) in {(time.time()-start)*1000:.1f}ms")
             result["processing_time_ms"] = (time.time() - start) * 1000
@@ -144,6 +151,53 @@ async def query_fault_intelligence(request: QueryRequest) -> dict:
         status_code=503,
         detail="No analysis service available. Please restart the backend.",
     )
+
+
+@router.post(
+    "/enhance",
+    tags=["Fault Analysis"],
+    summary="Enhance BM25 result with Llama LLM reasoning",
+    description=(
+        "Takes a fault query and calls Ollama Llama 3.2 directly with a 35s timeout. "
+        "Returns LLM reasoning to overlay on an existing BM25 result. "
+        "Call this after /query to add AI reasoning without slowing down the initial response."
+    ),
+)
+async def enhance_with_llama(request: QueryRequest) -> dict:
+    if not ollama_enhancer:
+        raise HTTPException(status_code=503, detail="Ollama not configured")
+    if not ollama_enhancer.is_available():
+        raise HTTPException(status_code=503, detail="Ollama not reachable — is it running?")
+    if not fallback_analyzer:
+        raise HTTPException(status_code=503, detail="Fallback analyzer not ready")
+
+    is_valid, err_msg = validate_query(request.query)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=err_msg)
+    safe_query = sanitize_query(request.query)
+
+    try:
+        bm25_result = fallback_analyzer.analyze(
+            query=safe_query,
+            region_filter=request.region_filter,
+            severity_filter=request.severity_filter,
+            technology_filter=request.technology_filter,
+            vendor_filter=request.vendor_filter,
+        )
+        loop = asyncio.get_event_loop()
+        enhanced = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                functools.partial(ollama_enhancer.enhance, safe_query, bm25_result, timeout=30),
+            ),
+            timeout=35.0,
+        )
+        return enhanced
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Llama timed out (>35s) — try again or use BM25 results")
+    except Exception as exc:
+        logger.error(f"✗ Llama enhance error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get(

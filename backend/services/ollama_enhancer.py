@@ -22,16 +22,23 @@ _SYSTEM_PROMPT = (
 
 
 class OllamaRCAEnhancer:
-    """Enhances BM25 fault analysis with Ollama LLM reasoning."""
+    """Enhances BM25 fault analysis with LLM reasoning (Groq / Ollama / OpenAI)."""
 
-    def __init__(self, client: OpenAI, model: str = "llama3.2"):
-        self.client = client
-        self.model  = model
+    def __init__(self, client: OpenAI, model: str = "llama3.2", provider: str = "ollama"):
+        self.client   = client
+        self.model    = model
+        self.provider = provider          # "groq" | "ollama" | "openai"
         self._available: bool | None = None
 
     # ── Availability check (lazy, cached) ────────────────────────────────────
 
     def check_available(self) -> bool:
+        # For custom proxies (not Ollama/localhost), skip the /models ping —
+        # many gateways don't expose it. Assume available; first real call will fail fast if not.
+        if self.provider not in ("ollama",):
+            self._available = True
+            logger.info(f"✓ LLM provider ready — provider: {self.provider}, model: {self.model}")
+            return True
         try:
             self.client.models.list()
             self._available = True
@@ -48,10 +55,11 @@ class OllamaRCAEnhancer:
 
     # ── Main entry point ─────────────────────────────────────────────────────
 
-    def enhance(self, query: str, bm25_result: Dict) -> Dict:
+    def enhance(self, query: str, bm25_result: Dict, timeout: int = 30) -> Dict:
         """
         Add LLM reasoning to a BM25 analysis result.
         Returns the original dict unchanged if Ollama is unavailable.
+        timeout: HTTP timeout for the Ollama call in seconds.
         """
         if not self.is_available():
             return bm25_result
@@ -84,9 +92,9 @@ class OllamaRCAEnhancer:
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user",   "content": prompt},
                 ],
-                max_tokens=150,
+                max_tokens=120,
                 temperature=0.2,
-                timeout=45,
+                timeout=timeout,
             )
             llm_text = response.choices[0].message.content.strip()
 

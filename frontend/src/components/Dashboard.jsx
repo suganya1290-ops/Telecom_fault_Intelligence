@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { FiTrendingUp, FiTrendingDown, FiAlertTriangle, FiClock } from 'react-icons/fi';
 
 function Dashboard({ metrics }) {
@@ -57,11 +57,11 @@ function Dashboard({ metrics }) {
 
         <div className="card p-4">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-slate-400 text-sm font-medium">Mean Time to Resolution</p>
+            <p className="text-slate-400 text-sm font-medium">Est. Time to Resolution</p>
             <FiAlertTriangle className="text-orange-500 text-lg" />
           </div>
           <p className="text-3xl font-bold text-white">{(metrics.mttr || 0).toFixed(1)} min</p>
-          <p className="text-slate-400 text-xs mt-2">MTTR</p>
+          <p className="text-slate-400 text-xs mt-2">historical avg estimate</p>
         </div>
 
         <div className="card p-4">
@@ -70,7 +70,7 @@ function Dashboard({ metrics }) {
             <FiTrendingDown className="text-red-500 text-lg" />
           </div>
           <p className="text-3xl font-bold text-red-400">{metrics.incidents_by_severity?.critical || 0}</p>
-          <p className="text-slate-400 text-xs mt-2">this month</p>
+          <p className="text-slate-400 text-xs mt-2">in dataset</p>
         </div>
       </div>
 
@@ -91,7 +91,7 @@ function Dashboard({ metrics }) {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {severityData.map((entry, index) => (
+                {severityData.map((_, index) => (
                   <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                 ))}
               </Pie>

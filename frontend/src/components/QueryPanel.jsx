@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { FiSearch, FiX, FiZap } from 'react-icons/fi';
 
 const SAMPLES = [
@@ -224,4 +224,4 @@ function QueryPanel({ query, onQueryChange, filters, onFilterChange, onSubmit, o
   );
 }
 
-export default QueryPanel;
+export default memo(QueryPanel);

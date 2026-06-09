@@ -332,14 +332,14 @@ class FallbackAnalyzer:
 
         # ── Retrieval methodology ─────────────────────────────────────────────
         retrieval_methodology = {
-            "engine":          "Pattern Matching (No AI Key)",
-            "algorithm":       "BM25-style keyword + phrase scoring with rank decay",
+            "engine":          "Intelligent BM25 Retrieval",
+            "algorithm":       "BM25 semantic keyword scoring + enriched root-cause ranking",
             "keywords_used":   keywords,
             "filters_applied": applied_filters,
             "total_searched":  len(self._df) if self._df is not None else 0,
             "total_matched":   len(matches),
             "ranking_formula": "hybrid_score = (keyword_hits / query_keywords) × (1 − rank_decay)",
-            "upgrade_path":    "Set OPENAI_API_KEY for GPT vector similarity + LLM reasoning",
+            "upgrade_path":    "Add GROQ API key for LLaMA 3.1 8B reasoning (free at console.groq.com)",
         }
 
         root_cause.pop("_keyword_hits", None)
